@@ -1,0 +1,182 @@
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage{a4wide}
+
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows}
+\usepackage[utf8x]{inputenc}
+
+\usepackage{amsfonts,amsmath,amssymb,amsthm}
+\usepackage{verbatim,float}
+\usepackage{graphicx,subfigure,url}
+\usepackage[square,sort,comma,numbers]{natbib}
+
+% \VignetteIndexEntry{An R package for SINGLE package}
+
+\begin{document}
+\SweaveOpts{concordance=TRUE}
+
+\title{{\tt SINGLE} Package Vignette}
+%\normalsize
+%\end{center}
+\author{Ricardo Pio Monti, Christoforos Anagnostopoulos and Giovanni Montana}
+\maketitle
+
+Given multiple longitudinal time series we are often interested in quantifying the relationship between the time series over time. For example, given fMRI data corresponding to various regions of interest in the brain we may be interested in measuring their statistical dependencies over time. These relationships can subsequently be summarised as graphs or networks where each node corresponds to a time series (e.g., a BOLD time series for a region of interest) and edges between nodes (or their absence) provide information regarding the nature of the relationship. Here we present a short tutorial and introduction to using the \verb+R+ package \verb+SINGLE+ to estimate such dynamic graphs over time from noisy time series data. The \verb+SINGLE+ package provides an implementation of the Smooth Incremental Graphical Lasso Estimation algorithm, full details of which can be found in \citep{MYREF}.
+
+\newpage
+\section{Introduction}
+
+There is an increasing interest in summarising the relationships between time series using undirected graphs.  Here each node represents a time series (e.g., this can be the BOLD time series for a brain region) and the edge structure serves to summarise the statistical relationship between nodes. Edge structure is commonly estimated using partial correlations. In this case, the absence of an edge between two nodes implies that the two nodes are conditionally independent given all other nodes. 
+
+However it is often the case that only a global graph is estimated using the entire time series. Whilst this may be appropriate in some scenarios, it is often the case that we expect the statistical dependencies between nodes to change over time. A clear example of this can be seen by considering fMRI time series of a subject performing alternating tasks: we naturally expect the relationship between brain regions to change depending on task.
+
+In this vignette, we introduce the \verb+SINGLE+ package which can be used to estimate dynamic graphs from noisy time series data. The remainder of this vignette is organised as follows: in Section \ref{sec:motivation} we give a brief motivating example to show the capabilities of the SINGLE algorithm. In Section \ref{sec:background} we give a brief background description of the SINGLE algorithm. Finally, in Section \ref{sec:functions} we give a more detailed description of each of the functions in the \verb+SINGLE+ package.
+\section{Motivating example}
+\label{sec:motivation}
+
+Here we present a brief motivational example to show the capabilities of the SINGLE algorithm and the functionality of the \verb+SINGLE+ package. 
+
+First we simulate non-stationary data in order to test the performance of the SINGLE algorithm. We simulate the data using the \verb+generate_random_data+ funciton:
+
+<<fig=FALSE, keep.source=TRUE>>=
+library('SINGLE')
+set.seed(1)
+sim = generate_random_data(ROI=5, length_=50, seg=3, sparsity=.15)
+@
+Here \verb+sim$data+ is a matrix with 5 columns and 150 rows. For example, this could correspond to fMRI data from 5 regions of interest over a time. As mentioned previously each column represents a node in our graph and each row is a chronologically ordered observation. Thus \verb+sim$data[i,j]+ is the ith observation of the jth node. 
+
+The true partial correlation structure over time is stored in the array \verb+sim$true_cov+. We also note that this dataset contains two changepoints, one at the 50th observation and the other at the 100th. We can view the correlation structure for the first 50 observations as follows:
+
+<<fig=FALSE, keep.source=TRUE>>=
+sim$true_cov[,,1]
+@
+ 
+We can now run the Smooth Incremental Graphical Lasso Estimation (SINGLE) algorithm to estimate the network structure over time. We then use the \verb+plotSINGLE+ function to plot the estimated partial correlations between each of the 5 nodes.
+
+<<fig=FALSE, keep.source=TRUE>>=
+data = sim$data
+S = SINGLE(data=data, radius=5, l1=.75, l2=0.5, k=3)
+@
+
+The SINGLE algorithm is an iterative algorithm and we can see from the result that it has converged in 30 iterations.
+
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, keep.source=TRUE>>=
+plotSINGLE(object=S, index=c(1,2,3,4,5), x.axis = seq(1,150), n.row=2, 
+           col.names=seq(1,5), fix.axis=TRUE)
+@
+\caption{Estimated partial correlations for simulated example}
+\end{figure}
+
+
+
+We can see that over the first 50 observations there is only a non-zero partial correlation between nodes 2 and 3 as we would expect. We also note that the estimated partial correlation is lower than 0.6, this is due to the presence of the sparsity ($\lambda_1$) penalty. Given this is a simulated example we can assess the performance of the SINGLE algorithm using precision, recall and $F$ scores over time using the \verb+precision_recall+ function:
+
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, keep.source=TRUE>>=
+result = precision_recall(true_cov=sim$true_cov, estimated_cov=S$P_)
+plot(result$F1, type='l', ylim=c(0,1), ylab='', 
+     main='F Score', xlab='Time') 
+@
+\caption{Plot of the $F$ score over time for the SINGLE algorithm on simulated data}
+\end{figure}
+
+
+\section{Background}
+\label{sec:background}
+We assume to have obtained time series denoted by $X_1, \ldots, X_T$, where each vector $X_i \in \mathbb{R}^{1 \times p}$ contains the measurements for each of the $p$ variables of interest at the $i$th time point. We are interested in inferring a sequence of graphs $\{G_1, G_2, \ldots, G_T\}$ where each $G_i=(V,E_i)$ corresponds to the functional connectivity between nodes, $V$, at time $i$. The edge structure, $E$, is determined using partial correlations. 
+
+The \verb+SINGLE+ algorithm has the following two desirable properties: (a) each graph $G_i$ is sparse thus allowing for accurate and interpretable estimates of the underlying graphs, and (b) the structure of the estimates graphs varies smoothly over time\footnote{we note that the extent of sparsity and smoothness can be determined by the user}.
+
+At any given time point, we assume that the random vector $X_i$ follows a multivariate Gaussian distribution, however both the mean and the covariance of this distribution are assumed to be dependent on the time index. We write $S_i$ to denote the estimated covariance matrix at time $i$.
+
+The set of partial correlations is summarised in the precision (inverse covariance) matrix. Thus our objective is equivalent to obtaining a sequence of time-dependent estimates of precision matrices, $\hat \Theta_1, \ldots, \hat \Theta_T$, where each $\hat \Theta_i = S_i^{-1}$. The Smooth Incremental Graphical Lasso (SINGLE) obtains these estimates by solving a constrained optimisation problem which balances goodness-of-fit, sparsity and temporal smoothness. This is achieved by formulating the following objective function:
+\begin{equation}
+ f(\{ \hat \Theta \}) =  \sum_{i=1}^T  \left [ -\mbox{log det } \hat \Theta_i + \mbox{trace } ( S_i \hat \Theta_i) \right ] + \lambda_1 \sum_{i=1}^T ||\hat \Theta_i||_1 + \lambda_2 \sum_{|i-j|<k} ||\hat \Theta_i - \hat \Theta_j||_1,
+\end{equation}
+where $\{\hat \Theta \} = \{\hat \Theta_1, \ldots, \hat \Theta_T \}$ contains all the precision matrices indexed by time. 
+By taking a closer look at the objective function we can gain a clear understanding of what the SINGLE algorithm is looking to achieve. The first sum is proportional to the sum of negative log likelihoods of the estimated precision matrices. The first penalty term regularised by $\lambda_1$ corresponds to the Graphical Lasso penalty and ensures sparsity in the estimated graphical structure by imposing a penalty on the sum of absolute entries in each $\hat \Theta_i$. On the other hand it, the second penalty function regularised by $\lambda_2$, ensures smoothness by penalising the differences between temporally adjacent networks. This penalty can be seen as an extension of the Fused Lasso penalty from the context of penalised regression (i.e., in the Fused Lasso we penalise $|\beta_i-\beta_{i+1}|$ and here this is extended to the difference over graphs). It is the choice of parameter $k$ that governs the extent over which we expect there to be smoothness in the functional connectivity structure over time. It 
+follows that a large choice of $k$ will penalise changes over a longer period of time and thus result in \emph{smoother} estimates.
+
+The SINGLE estimation procedure consists of two independent steps performed in sequence: initially, recursive estimates of the covariance matrices $S_1, \ldots, S_T$ are obtained using a Gaussian kernel; then an iterative optimisation algorithm is run until convergence in order to produce a sequence of estimated graphs. Full details of the SINGLE algorithm are given in \citep{MYREF}.
+
+\section{The \texttt{SINGLE} package}
+\label{sec:functions}
+
+In this section we give a more detailed description of each of the functions contained in the \verb+SINGLE+ package.
+
+\subsection{\texttt{generate\_random\_data}}
+
+This function allows for the generatation of data with a random correlation structure that is piecewise continuous. This is achieved using Vector Autoregressive Processes (VAR) and Erdos-Renyi random graphs. The choice of VAR processes here is motivated by their ability to encode autocorrelation within a time series as well as cross-correlations across time series.
+
+First a random correlation structure is simulated using Erdos-Renyi random graphs. This is then used to simulate a VAR process with the given correlation structure.
+
+As shown in the motivational example, we can easily simulate data using this function:
+<<eval=FALSE, keep.source=TRUE>>=
+sim = generate_random_data(ROI=5, length_=50, seg=3, sparsity=.15)
+@
+We note that while the number of piecewise continuous segments of data and their lengths can be specified using \verb+seg+ and \verb+length_+ respectively. Random data with segments of different lengths can be generated using the \verb+generate_random_data+ command several times as follows:
+
+<<keep.source=TRUE>>=
+sim1 = generate_random_data(ROI=5, length_=25, seg=1, sparsity=.15)
+sim2 = generate_random_data(ROI=5, length_=75, seg=1, sparsity=.15)
+data = rbind(sim1$data, sim2$data)
+@
+ 
+This function depends on the \verb+igraph+ \citep{igraphPackage} and \verb+dse+ packages \citep{dsePackage}.
+
+\subsection{\texttt{SINGLE}}
+The \verb+SINGLE+ function is the main function within the \verb+SINGLE+ package and provides an implementation of the SINGLE algorithm. We note that this function requires the input of the following user-specified parameters:
+\begin{enumerate}
+\item \verb+radius+: This is the radius, $h$, used in the Gaussian kernel. The choice of this radius is particularly important. Setting $h$ to be too large will result in overly smooth estimates whereas choosing $h$ to be too small will result in noisy estimation. Intuitively it is advised to set $h$ to be as small as possible without compromising the stability of estimated covariances $S_1,\ldots,S_T$. Ultimately, the choice of $h$ should depend on the dimensionality of the data, $p$, and the rate of change of the underlying networks, often refered to as the drift speed. Assuming the drift speed is sufficiently slow, setting $h=p$ can be used as a rule of thumb. However, if this is not the case then reducing the value of $h$ will improve performance. 
+\item \verb+l1+: This is value of $\lambda_1$ in the SINGLE objective function. Increasing the value of $\lambda_1$ will increase the sparsity of the estimated dynamic networks.
+\item \verb+l2+: This is the value of $\lambda_2$ in the SINGLE objective. Increasing the value of $\lambda_2$ will encourage sparsity in the difference of temporally adjacent networks, thus resulting in \textit{smoother} estimates.
+\item \verb+k+: This determines the extent of the $\lambda_2$ penalty in the SINGLE objective and can be interpreted as the extent over which we expect there to be smoothness in network structure over time. 
+
+\end{enumerate}
+
+As shown in Section \ref{sec:motivation} the SINGLE algorithm can be run as follows:
+<<keep.source=TRUE, eval=FALSE>>=
+data = sim$data
+S = SINGLE(data=data, radius=5, l1=.75, l2=0.3, k=3)
+@
+
+Since the SINGLE algorithm relies on the Fused Lasso for one step of its iterative optimisation this function depends on the \verb+flsa+ package \citep{flsaPackage}.
+
+
+
+\subsection{\texttt{precision\_recall}}
+
+The \verb+precision_recall+ function allows us to measure the performance of the SINGLE algorithm. Precision is defined as the fraction of reported edges which are true edges while recall is defined as the fraction of true edges which are correctly reported. It follows that the closer precision and recall are to 1 the better the performance. Finally we also define the $F$ score as follows:
+$$ F = 2 \cdot \frac{P \cdot R}{P + R},$$
+where $P$ and $R$ refer to the precision and recall respectively.
+
+This function calculates the precision and recall for an iteration of the SINGLE algorithm at each observation. That is, at the $i$th observation the precision, recall and $F$ score is calculated by comparing the true correlation structure at the time and the correlation structure estimated by the SINGLE algorithm. 
+
+The \verb+precision_recall+ function is run directly on the array of estimated precision matrices (\verb+S$P_+ in the example above) as follows:
+
+<<eval=FALSE, keep.source=TRUE>>=
+result = precision_recall(true_cov=sim$true_cov, estimated_cov=S$P_)
+@
+
+\subsection{\texttt{plotSINGLE}}
+The \verb+plotSINGLE+ function allows for the visualisation of the estimated correlation structures over time. This is achieved by plotting the pairwise partial correlations between each of the nodes. 
+Since there may be a potentially large number of nodes (resulting in an even larger number of pairwise correlations to plot) the \verb+plotSINGLE+ function allows the user to specify a subset of nodes to plot using its \verb+index+ command. In the example from before we plot the partial correlations for all nodes. Alternatively, we could plot only the partial correlations between the 1st, 3rd and 5th nodes as follows: 
+
+\begin{figure}[h!]
+\centering
+<<fig=TRUE, keep.source=TRUE>>=
+plotSINGLE(object=S, index=c(1,3,5), x.axis = seq(1,150), n.row=1, 
+           col.names=c(1,3,5), fix.axis=TRUE)
+@
+\caption{Estimated partial correlations for simulated example discussed previously}
+\end{figure}
+
+
+\bibliography{ref}{}
+\bibliographystyle{plain}
+
+\end{document}
