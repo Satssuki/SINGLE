@@ -44,9 +44,9 @@ Ricardo Pio Monti
 
 \examples{
 set.seed(1)
-X = generate_random_data(ROI=5, length_=50, seg=3, sparsity=0.15, str=0.6)
+X = generate_random_data(ROI=5, length_=50, seg=3, sparsity=0.1, str=0.6)
 \dontrun{
-S = SINGLE(data=X$data, radius=5, l1=0.75, l2=0.3, k=3)
+S = SINGLE(data=X$data, h=50, l1=0.7, l2=0.5)
 plotSINGLE(S, index = c(1,2,3,4,5), x.axis=seq(1,150), 
     col.names=seq(1,5), n.row=2, fix.axis=TRUE)
 }

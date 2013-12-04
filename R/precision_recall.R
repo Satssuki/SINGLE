@@ -30,6 +30,6 @@ function(true_cov, estimated_cov){
   }
   
   f1_scores = 2*(my_pres * my_recall)/(my_pres + my_recall+0.00001)
-  
+    
   return(list(pres=my_pres, recall=my_recall, F1=f1_scores))
 }

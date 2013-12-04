@@ -9,9 +9,9 @@
 \usepackage{amsfonts,amsmath,amssymb,amsthm}
 \usepackage{verbatim,float}
 \usepackage{graphicx,subfigure,url}
-\usepackage[square,sort,comma,numbers]{natbib}
+\usepackage{natbib}
 
-% \VignetteIndexEntry{An R package for SINGLE package}
+% \VignetteIndexEntry{An R package for the SINGLE algorithm}
 
 \begin{document}
 \SweaveOpts{concordance=TRUE}
@@ -42,24 +42,43 @@ First we simulate non-stationary data in order to test the performance of the SI
 <<fig=FALSE, keep.source=TRUE>>=
 library('SINGLE')
 set.seed(1)
-sim = generate_random_data(ROI=5, length_=50, seg=3, sparsity=.15)
+sim = generate_random_data(ROI=5, length_=50, seg=3, sparsity=.1, str=-.6)
 @
-Here \verb+sim$data+ is a matrix with 5 columns and 150 rows. For example, this could correspond to fMRI data from 5 regions of interest over a time. As mentioned previously each column represents a node in our graph and each row is a chronologically ordered observation. Thus \verb+sim$data[i,j]+ is the ith observation of the jth node. 
+Here \verb+sim+ is a list of length two. The first entry contains a matrix of simulated non-stationary data and the second contains an array which summaries the true correlation structure over time. Thus \verb+sim$data+ is a matrix with 5 columns and 150 rows. For example, this could correspond to fMRI data from 5 regions of interest over a time. As mentioned previously each column represents a node in our graph and each row is a chronologically ordered observation. Thus \verb+sim$data[i,j]+ is the ith observation of the jth node. 
 
-The true partial correlation structure over time is stored in the array \verb+sim$true_cov+. We also note that this dataset contains two changepoints, one at the 50th observation and the other at the 100th. We can view the correlation structure for the first 50 observations as follows:
+The true partial correlation structure over time is stored in the array \verb+sim$true_cov+. We also note that this dataset contains two changepoints, one at the 50th observation and the other at the 100th. We can view the correlation structure for at the first observations as follows:
 
 <<fig=FALSE, keep.source=TRUE>>=
 sim$true_cov[,,1]
 @
  
-We can now run the Smooth Incremental Graphical Lasso Estimation (SINGLE) algorithm to estimate the network structure over time. We then use the \verb+plotSINGLE+ function to plot the estimated partial correlations between each of the 5 nodes.
+We can now run the Smooth Incremental Graphical Lasso Estimation (SINGLE) algorithm to estimate the network structure over time. The SINGLE algorithm requires the input of three intuitive parameters. Parameters $\lambda_1$ and $\lambda_2$ control the level of sparsity and temporal homogeneity respectively. They can be estimated by minimising AIC over a given range of values. The final parameter is $h$, the choice of width for the Gaussian kernel. This can be estimated using the \verb+choose_h+ function which calculates the look-ahead log-likelihood.
 
 <<fig=FALSE, keep.source=TRUE>>=
 data = sim$data
-S = SINGLE(data=data, radius=5, l1=.75, l2=0.5, k=3)
+h_G = choose_h(data=data, sample_size=30, kernel="gaussian", 
+               h_lower=20, h_upper=100, h_step=10)
+h_W = choose_h(data=data, sample_size=30, kernel="window", 
+               h_lower=20, h_upper=100, h_step=10)
 @
 
-The SINGLE algorithm is an iterative algorithm and we can see from the result that it has converged in 30 iterations.
+We note that the choice of \verb+kernel+ allows the user to alternative between a Gaussian kernel and a sliding window. 
+
+The SINGLE algorithm can then be implemented in one of two ways. Firstly, we can simply input the data as well as the estimated width together with $\lambda_1$ and $\lambda_2$ parameters as follows:
+
+<<fig=FALSE, keep.source=TRUE>>=
+S = SINGLE(data=data, h=h_G, l1=.75, l2=0.5)
+@
+
+This automatically uses a Gaussian kernel to estimate sample covariance matrices. Alternatively, we can directly supply the \verb+SINGLE+ function with an array \verb+C+ of sample covariance matrices. This allows us to run the SINGLE algorithm on any arbitrary choice of sample covariance matrices. For example, we could use a sliding window to estimate covariance matrices. This can be achieved using the \verb+get_kern_cov+ function as follows:
+
+<<fig=FALSE, keep.source=TRUE>>=
+C_slid = get_kern_cov(data=data, h=h_W, kernel="window")
+S_slid = SINGLE(data=data, C=C_slid, l1=.75, l2=0.5)
+@
+
+This gives the \verb+SINGLE+ function greater flexibility and allows the user to easily compare performance across difference widths, $h$, as well as using different kernels. Of course the values of $\lambda_1$ and $\lambda_2$ would need to be estimated for each choice of $h$ and kernel. The \verb+SINGLE+ function also returns the $AIC$ and $BIC$ for specified parameters $\lambda_1$ and $\lambda_2$. 
+
 
 \begin{figure}[h!]
 \centering
@@ -70,9 +89,7 @@ plotSINGLE(object=S, index=c(1,2,3,4,5), x.axis = seq(1,150), n.row=2,
 \caption{Estimated partial correlations for simulated example}
 \end{figure}
 
-
-
-We can see that over the first 50 observations there is only a non-zero partial correlation between nodes 2 and 3 as we would expect. We also note that the estimated partial correlation is lower than 0.6, this is due to the presence of the sparsity ($\lambda_1$) penalty. Given this is a simulated example we can assess the performance of the SINGLE algorithm using precision, recall and $F$ scores over time using the \verb+precision_recall+ function:
+We can see that the estimated partial correlations accurately reflect the true network structure (stored in \verb+sim$true_cov+). We also note that the estimated partial correlation is lower than 0.6, this is due to the presence of the sparsity ($\lambda_1$) penalty. Given this is a simulated example we can assess the performance of the SINGLE algorithm using precision, recall and $F$ scores over time using the \verb+precision_recall+ function:
 
 \begin{figure}[h!]
 \centering
@@ -110,38 +127,41 @@ In this section we give a more detailed description of each of the functions con
 
 \subsection{\texttt{generate\_random\_data}}
 
-This function allows for the generatation of data with a random correlation structure that is piecewise continuous. This is achieved using Vector Autoregressive Processes (VAR) and Erdos-Renyi random graphs. The choice of VAR processes here is motivated by their ability to encode autocorrelation within a time series as well as cross-correlations across time series.
+This function allows for the generatation of data with a random correlation structure that is piecewise continuous. This is achieved using Vector Autoregressive Processes (VAR). The choice of VAR processes here is motivated by their ability to encode autocorrelation within a time series as well as cross-correlations across time series. Network structure can be simulated according to either Erdos-Renyi random graphs or Barabasi-Albert scale-free networks. This choice is specified by \verb+mode+ input in the \verb+generate_random_data+ funciton.
 
-First a random correlation structure is simulated using Erdos-Renyi random graphs. This is then used to simulate a VAR process with the given correlation structure.
+First a random correlation structure is simulated. This is then used to simulate a VAR process with the given correlation structure.
 
 As shown in the motivational example, we can easily simulate data using this function:
 <<eval=FALSE, keep.source=TRUE>>=
-sim = generate_random_data(ROI=5, length_=50, seg=3, sparsity=.15)
+sim_ER = generate_random_data(ROI=5, length_=50, mode='ER', seg=3, sparsity=.1)
+sim_BA = generate_random_data(ROI=5, length_=50, mode='BA', seg=3, sparsity=.1)
 @
 We note that while the number of piecewise continuous segments of data and their lengths can be specified using \verb+seg+ and \verb+length_+ respectively. Random data with segments of different lengths can be generated using the \verb+generate_random_data+ command several times as follows:
 
 <<keep.source=TRUE>>=
-sim1 = generate_random_data(ROI=5, length_=25, seg=1, sparsity=.15)
-sim2 = generate_random_data(ROI=5, length_=75, seg=1, sparsity=.15)
+sim1 = generate_random_data(ROI=5, length_=25, mode='BA', seg=1, sparsity=.15)
+sim2 = generate_random_data(ROI=5, length_=75, mode='BA', seg=1, sparsity=.15)
 data = rbind(sim1$data, sim2$data)
 @
  
-This function depends on the \verb+igraph+ \citep{igraphPackage} and \verb+dse+ packages \citep{dsePackage}.
+This function depends on both the \verb+igraph+ \citep{igraphPackage} and \verb+dse+ packages \citep{dsePackage} for simulating random networks and VAR processes respectively.
 
 \subsection{\texttt{SINGLE}}
 The \verb+SINGLE+ function is the main function within the \verb+SINGLE+ package and provides an implementation of the SINGLE algorithm. We note that this function requires the input of the following user-specified parameters:
 \begin{enumerate}
-\item \verb+radius+: This is the radius, $h$, used in the Gaussian kernel. The choice of this radius is particularly important. Setting $h$ to be too large will result in overly smooth estimates whereas choosing $h$ to be too small will result in noisy estimation. Intuitively it is advised to set $h$ to be as small as possible without compromising the stability of estimated covariances $S_1,\ldots,S_T$. Ultimately, the choice of $h$ should depend on the dimensionality of the data, $p$, and the rate of change of the underlying networks, often refered to as the drift speed. Assuming the drift speed is sufficiently slow, setting $h=p$ can be used as a rule of thumb. However, if this is not the case then reducing the value of $h$ will improve performance. 
+\item \verb+h+: This is the width, $h$, used in the Gaussian kernel. The choice of this radius is particularly important. Setting $h$ to be too large will result in overly smooth estimates whereas choosing $h$ to be too small will result in noisy estimation. The optimal choice of $h$ can be estimated using the \verb+choose_h+ function.
 \item \verb+l1+: This is value of $\lambda_1$ in the SINGLE objective function. Increasing the value of $\lambda_1$ will increase the sparsity of the estimated dynamic networks.
 \item \verb+l2+: This is the value of $\lambda_2$ in the SINGLE objective. Increasing the value of $\lambda_2$ will encourage sparsity in the difference of temporally adjacent networks, thus resulting in \textit{smoother} estimates.
-\item \verb+k+: This determines the extent of the $\lambda_2$ penalty in the SINGLE objective and can be interpreted as the extent over which we expect there to be smoothness in network structure over time. 
+\item \verb+C+: This is an optional input of an array of estimated sample covariance matrices. These can be estimated in any arbitrary manner.
 
 \end{enumerate}
 
 As shown in Section \ref{sec:motivation} the SINGLE algorithm can be run as follows:
 <<keep.source=TRUE, eval=FALSE>>=
+set.seed(1)
+sim = generate_random_data(ROI=5, length_=50, seg=3, sparsity=.1, str=-.6)
 data = sim$data
-S = SINGLE(data=data, radius=5, l1=.75, l2=0.3, k=3)
+S = SINGLE(data=data, h=50, l1=.75, l2=0.5)
 @
 
 Since the SINGLE algorithm relies on the Fused Lasso for one step of its iterative optimisation this function depends on the \verb+flsa+ package \citep{flsaPackage}.
@@ -169,14 +189,39 @@ Since there may be a potentially large number of nodes (resulting in an even lar
 \begin{figure}[h!]
 \centering
 <<fig=TRUE, keep.source=TRUE>>=
-plotSINGLE(object=S, index=c(1,3,5), x.axis = seq(1,150), n.row=1, 
-           col.names=c(1,3,5), fix.axis=TRUE)
+plotSINGLE(object=S, index=c(1,2,3,5), x.axis = seq(1,150), n.row=2, 
+           col.names=c(1,2,3,5), fix.axis=TRUE)
 @
 \caption{Estimated partial correlations for simulated example discussed previously}
 \end{figure}
 
 
+\subsection{\texttt{choose\_h}}
+The \verb+choose_h+ function allows the user to estimate the optimal kernel width using look-ahead log-likelihood. We define 
+\begin{equation}
+\mathcal{L}_{-1}(i;h) =  -\frac{1}{2} \mbox{ log det }(S_{i-1}) - \frac{1}{2} (X_i - \mu_{i-1})^T S_{i-1}^{-1}(X_i - \mu_{i-1})
+\end{equation}
+as the estimated look-ahead log-likelihood for the $i$th observation for some fixed choice of $h$. We note that both $\mu_{i-1}$ and $S_{i-1}$ are estimated with 
+the $i$th observation removed. It follows that calculating $\mathcal{L}_{-1}(h)$ for all observations is computationally expensive, thus in order to save computational
+effort we sample a subset of observations $R \subseteq \{2,\ldots,T\}$. The optimal value of $h$ can then be estimated by choosing $h$ to maximise the following score function:
+\begin{equation}
+\label{h_tune}
+CV(h) = \sum_{i \in R} \mathcal{L}_{-1}(i;h),
+\end{equation}
+where in order to reduce the variability of estimated look-ahead log-likelihoods we use the same sample $R$ to calculate each $CV(h)$. 
+
+The \verb+sample_size+ input in the \verb+choose_h+ function determines the size of subset $R$ and the inputs \verb+h_lower+, \verb+h_upper+ and \verb+h_step+ determine the values over which we calculate $CV(h)$.
+
+\subsection{\texttt{get\_kern\_cov}}
+The \verb+get_kern_cov+ function allows the user to estimate sample covariance matrices for a given data using either a Gaussian kernel or sliding window of any given width. The following formula is used to estimate sample covariance matrices:
+\begin{align}
+ \mu_i &= \frac{ \sum_{j=1}^T K_h(i, j) \cdot X_j}{\sum_{j=1}^T K_h(i, j)}, \label{mean_est}\\
+ S_i &= \frac{ \sum_{j=1}^T K_h(i, j) \cdot (X_j-\mu_j)^T (X_j-\mu_j)}{\sum_{j=1}^T K_h(i, j)} \label{cov_est}.
+\end{align}
+where $K_h(\cdot, \cdot)$ is a kernel function.
+
+
 \bibliography{ref}{}
-\bibliographystyle{plain}
+\bibliographystyle{plainnat}
 
 \end{document}
