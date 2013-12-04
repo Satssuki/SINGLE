@@ -14,6 +14,7 @@ function(data, ID, h, centered=FALSE, kernel='gaussian'){
   } else if (kernel=='window'){
     norm_ = my_window_kern(ID, x, h)
   }
+  norm_[ID] = 0
   data = data * sqrt(norm_)
   
   cov_ = matrix(apply(apply(data, 1, FUN=function(x){x%*%t(x)}),1,sum), ncol=ncol(data))

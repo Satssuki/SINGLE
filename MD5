@@ -1,6 +1,6 @@
-ecd345ed1c202e2a66b32e947504938d *DESCRIPTION
+5372450a7ff841db7dfe92af8103c322 *DESCRIPTION
 fb951253d5a3bf574e48278cda840708 *NAMESPACE
-1a678b0d393da6d8d28e39b07ded3c9b *R/SINGLE.R
+c6297a3036db4945aee9bf36bb34dbab *R/SINGLE.R
 262781eb3ec7629cf6db084950ee09fe *R/check_conv.R
 991778f4f0cf480f74ec3d7dc32ce601 *R/choose_h.R
 2d2af4063e4b3463ad8fd9cfc394584a *R/ensure_pos_def.R
@@ -11,12 +11,12 @@ a56853600a0a2428bb1fa968160d8070 *R/generate_random_data.R
 3b57ba53015f8478272bc1485d45f2be *R/generate_random_graph.R
 272dae10755e009344b0b2b47f4ae247 *R/get_aic.R
 04c5a6f7fb52817657fbbc4d0553ab60 *R/get_kern_cov.R
-5a3c58c8375189496f99b4d6e94d8c87 *R/get_kern_cov_ind.R
+033205290f48d0c70349dd3194a3251b *R/get_kern_cov_ind.R
 7422cb200bdf0999ed74210ca4be5720 *R/get_kern_mean.R
-900f9b3fd5cb48615fdf7a5b3995fb77 *R/get_kern_mean_ind.R
+2363f0b9211b427983fa3b8c42bec570 *R/get_kern_mean_ind.R
 540f0a4dce4c24038f1297882e47bd5b *R/jgl_fgl_offline.R
 b8ff4f98216034197f1ecc3d2ba6733c *R/log_lik.R
-f3575c0abc7161915f2cfbd2c9439e41 *R/log_like_h_LOO.R
+ee6bb991e5aab897fd4451161671f4fc *R/log_like_h_LOO.R
 fca739f002439a07b4a2aaf7848164f0 *R/minimize_theta.R
 013eb9d977b740c6a1ed4744bbd69e50 *R/minimize_z_fused_FL.R
 7fb2c3d635a629780a10a0f09a463053 *R/my_exp_kern.R

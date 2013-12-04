@@ -8,6 +8,8 @@ function(ID, data, h, kernel='gaussian'){
   } else if (kernel=='window'){
     norm_ = my_window_kern(ID, x, h)
   }
+  
+  norm_[ID] = 0
     
   mean_ = apply(data * norm_,2,FUN=function(x){sum(x)/sum(norm_)})
   

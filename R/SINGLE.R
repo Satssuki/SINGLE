@@ -104,7 +104,7 @@ function(data, C, h, l1, l2, kernel="gaussian", tol=0.01, verbose=FALSE){
       for (j in 1:length(l2)){
 #         cat(i,j, "\n")
         S = jgl_fgl_offline(S=C_, lambda1=l1[i], lambda2=l2[j], rho=1, obs=rep(1, length(C_)), max_iter=500, tol=tol)
-        AIC[j,i] = get_aic(data, S$Z)
+        AIC[j,i] = get_aic(data, S$theta)
       }
     }
     
@@ -119,7 +119,7 @@ function(data, C, h, l1, l2, kernel="gaussian", tol=0.01, verbose=FALSE){
   # make into an array:
   precision_ = array(unlist(precision), c(ncol(precision[[1]]), ncol(precision[[1]]), length(precision)))
   
-  AIC = get_aic(data, result$Z)
+  AIC = get_aic(data, result$theta)
   
   return(list(P=precision, P_=precision_, C=C_, AIC=AIC, l1=l1, l2=l2, h=h))
 }
